@@ -42,7 +42,7 @@ else:
 
 def str2id(s, start_end=False):
     # 文字转整数id
-    if start_end: # 补上<start>和<end>标记
+    if start_end: # 补上<start>和<end>标记， ‘2’代表start, '3'end，‘1’生僻字
         ids = [char2id.get(c, 1) for c in s[:maxlen-2]]
         ids = [2] + ids + [3]
     else: # 普通转化
@@ -81,12 +81,13 @@ x_in = Input(shape=(None,))
 y_in = Input(shape=(None,))
 x = x_in
 y = y_in
+# 注意mask的形式，实际上根本没有起到作用？
 x_mask = Lambda(lambda x: K.cast(K.greater(K.expand_dims(x, 2), 0), 'float32'))(x)
 y_mask = Lambda(lambda x: K.cast(K.greater(K.expand_dims(x, 2), 0), 'float32'))(y)
 
 
-def to_one_hot(x): # 输出一个词表大小的向量，来标记该词是否在文章出现过
-    x, x_mask = x
+def to_one_hot(x_set): # 输出一个词表大小的向量，来标记该词是否在文章出现过
+    x, x_mask = x_set
     x = K.cast(x, 'int32')
     x = K.one_hot(x, len(chars)+4)
     x = K.sum(x_mask * x, 1, keepdims=True)
@@ -120,6 +121,8 @@ x = embedding(x)
 y = embedding(y)
 
 # encoder，双层双向LSTM
+# CuDNNLSTM 适用于GPU运算，输入是3维tensor,(samples, timesteps, input_dim)
+#  举个栗子，假如我们输入有100个句子，每个句子都由5个单词组成，而每个单词用64维的词向量表示。那么samples=100，timesteps=5，input_dim=64
 x = Bidirectional(CuDNNLSTM(char_size/2, return_sequences=True))(x)
 x = Bidirectional(CuDNNLSTM(char_size/2, return_sequences=True))(x)
 
@@ -152,6 +155,7 @@ class Interact(Layer):
         o = K.batch_dot(a, v, [2, 1])
         # 将各步结果拼接
         return K.concatenate([o, q, mv], 2)
+        
     def compute_output_shape(self, input_shape):
         return (None, input_shape[0][1],
                 input_shape[0][2]+input_shape[1][2]*2)
